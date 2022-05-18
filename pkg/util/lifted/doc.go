@@ -56,6 +56,12 @@ package lifted
 | retain.go                | https://github.com/kubernetes-sigs/kubefed/blob/master/pkg/controller/sync/dispatch/retain.go                                 | func retainServiceHealthCheckNodePort   | Y       |
 | retain.go                | https://github.com/kubernetes-sigs/kubefed/blob/master/pkg/controller/sync/dispatch/retain.go                                 | func retainServiceClusterIP             | Y       |
 | retain.go                | https://github.com/kubernetes-sigs/kubefed/blob/master/pkg/controller/sync/dispatch/retain.go                                 | func RetainServiceAccountFields         | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/registry/core/pod/strategy.go#L304-L325                        | func PodToSelectableFields              | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/registry/core/node/strategy.go#L207-L214                       | func NodeToSelectableFields             | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/registry/core/event/strategy.go#L112-L133                      | func EventToSelectableFields            | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/apis/core/v1/conversion.go#L35-L56                             | func PodFieldLabelConversion            | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/apis/core/v1/conversion.go#L60-L70                             | func NodeFieldLabelConversion           | Y       |
+| strategy.go              | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/apis/core/v1/conversion.go#L426-L448                           | func EventFieldLabelConversion          | Y       |
 | taint.go                 | https://github.com/kubernetes/kubernetes/blob/release-1.23/staging/src/k8s.io/kubectl/pkg/cmd/taint/utils.go#L37-L73          | func ParseTaints                        | N       |
 | taint.go                 | https://github.com/kubernetes/kubernetes/blob/release-1.23/staging/src/k8s.io/kubectl/pkg/cmd/taint/utils.go#L75-L118         | func parseTaint                         | N       |
 | taint.go                 | https://github.com/kubernetes/kubernetes/blob/release-1.23/staging/src/k8s.io/kubectl/pkg/cmd/taint/utils.go#L120-L126        | func validateTaintEffect                | N       |

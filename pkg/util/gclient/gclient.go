@@ -13,6 +13,7 @@ import (
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	networkv1alpha1 "github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1"
+	proxyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1"
 	searchv1alpha1 "github.com/karmada-io/karmada/pkg/apis/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
@@ -30,6 +31,7 @@ func init() {
 	var _ = workv1alpha1.AddToScheme(aggregatedScheme)       // add work v1alpha1 schemes
 	var _ = workv1alpha2.AddToScheme(aggregatedScheme)       // add work v1alpha2 schemes
 	var _ = searchv1alpha1.AddToScheme(aggregatedScheme)     // add search v1alpha1 schemes
+	var _ = proxyv1alpha1.AddToScheme(aggregatedScheme)      // add proxy v1alpha1 schemes
 	var _ = mcsv1alpha1.AddToScheme(aggregatedScheme)        // add mcs-api schemes
 	var _ = clusterapiv1alpha4.AddToScheme(aggregatedScheme) // add cluster-api v1alpha4 schemes
 	var _ = clusterapiv1beta1.AddToScheme(aggregatedScheme)  // add cluster-api v1beta1 schemes

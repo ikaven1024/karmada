@@ -10,6 +10,7 @@ import (
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/config/v1alpha1"
 	networkingv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/networking/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/policy/v1alpha1"
+	proxyv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/proxy/v1alpha1"
 	searchv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha2"
@@ -24,6 +25,7 @@ type Interface interface {
 	ConfigV1alpha1() configv1alpha1.ConfigV1alpha1Interface
 	NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface
 	PolicyV1alpha1() policyv1alpha1.PolicyV1alpha1Interface
+	ProxyV1alpha1() proxyv1alpha1.ProxyV1alpha1Interface
 	SearchV1alpha1() searchv1alpha1.SearchV1alpha1Interface
 	WorkV1alpha1() workv1alpha1.WorkV1alpha1Interface
 	WorkV1alpha2() workv1alpha2.WorkV1alpha2Interface
@@ -37,6 +39,7 @@ type Clientset struct {
 	configV1alpha1     *configv1alpha1.ConfigV1alpha1Client
 	networkingV1alpha1 *networkingv1alpha1.NetworkingV1alpha1Client
 	policyV1alpha1     *policyv1alpha1.PolicyV1alpha1Client
+	proxyV1alpha1      *proxyv1alpha1.ProxyV1alpha1Client
 	searchV1alpha1     *searchv1alpha1.SearchV1alpha1Client
 	workV1alpha1       *workv1alpha1.WorkV1alpha1Client
 	workV1alpha2       *workv1alpha2.WorkV1alpha2Client
@@ -60,6 +63,11 @@ func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1In
 // PolicyV1alpha1 retrieves the PolicyV1alpha1Client
 func (c *Clientset) PolicyV1alpha1() policyv1alpha1.PolicyV1alpha1Interface {
 	return c.policyV1alpha1
+}
+
+// ProxyV1alpha1 retrieves the ProxyV1alpha1Client
+func (c *Clientset) ProxyV1alpha1() proxyv1alpha1.ProxyV1alpha1Interface {
+	return c.proxyV1alpha1
 }
 
 // SearchV1alpha1 retrieves the SearchV1alpha1Client
@@ -137,6 +145,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.proxyV1alpha1, err = proxyv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.searchV1alpha1, err = searchv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -174,6 +186,7 @@ func New(c rest.Interface) *Clientset {
 	cs.configV1alpha1 = configv1alpha1.New(c)
 	cs.networkingV1alpha1 = networkingv1alpha1.New(c)
 	cs.policyV1alpha1 = policyv1alpha1.New(c)
+	cs.proxyV1alpha1 = proxyv1alpha1.New(c)
 	cs.searchV1alpha1 = searchv1alpha1.New(c)
 	cs.workV1alpha1 = workv1alpha1.New(c)
 	cs.workV1alpha2 = workv1alpha2.New(c)

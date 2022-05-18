@@ -81,6 +81,16 @@ deepcopy-gen \
   --input-dirs=github.com/karmada-io/karmada/pkg/apis/search \
   --output-package=github.com/karmada-io/karmada/pkg/apis/search \
   --output-file-base=zz_generated.deepcopy
+deepcopy-gen \
+  --go-header-file hack/boilerplate/boilerplate.go.txt \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-package=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-file-base=zz_generated.deepcopy
+deepcopy-gen \
+  --go-header-file hack/boilerplate/boilerplate.go.txt \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/proxy \
+  --output-package=github.com/karmada-io/karmada/pkg/apis/proxy \
+  --output-file-base=zz_generated.deepcopy
 
 echo "Generating with register-gen"
 register-gen \
@@ -123,6 +133,11 @@ register-gen \
   --input-dirs=github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
   --output-package=github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
   --output-file-base=zz_generated.register
+register-gen \
+  --go-header-file hack/boilerplate/boilerplate.go.txt \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-package=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-file-base=zz_generated.register
 
 echo "Generating with conversion-gen"
 conversion-gen \
@@ -135,25 +150,30 @@ conversion-gen \
   --input-dirs=github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
   --output-package=github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
   --output-file-base=zz_generated.conversion
+conversion-gen \
+  --go-header-file hack/boilerplate/boilerplate.go.txt \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-package=github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
+  --output-file-base=zz_generated.conversion
 
 echo "Generating with client-gen"
 client-gen \
   --go-header-file hack/boilerplate/boilerplate.go.txt \
   --input-base="" \
-  --input=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
+  --input=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1,github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
   --output-package=github.com/karmada-io/karmada/pkg/generated/clientset \
   --clientset-name=versioned
 
 echo "Generating with lister-gen"
 lister-gen \
   --go-header-file hack/boilerplate/boilerplate.go.txt \
-  --input-dirs=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1,github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
   --output-package=github.com/karmada-io/karmada/pkg/generated/listers
 
 echo "Generating with informer-gen"
 informer-gen \
   --go-header-file hack/boilerplate/boilerplate.go.txt \
-  --input-dirs=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1 \
+  --input-dirs=github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1,github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha1,github.com/karmada-io/karmada/pkg/apis/work/v1alpha2,github.com/karmada-io/karmada/pkg/apis/config/v1alpha1,github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1,github.com/karmada-io/karmada/pkg/apis/search/v1alpha1,github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1 \
   --versioned-clientset-package=github.com/karmada-io/karmada/pkg/generated/clientset/versioned \
   --listers-package=github.com/karmada-io/karmada/pkg/generated/listers \
   --output-package=github.com/karmada-io/karmada/pkg/generated/informers
@@ -171,6 +191,7 @@ openapi-gen \
   --input-dirs "k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/apimachinery/pkg/runtime,k8s.io/apimachinery/pkg/version" \
   --input-dirs "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1,k8s.io/api/admissionregistration/v1,k8s.io/api/networking/v1" \
   --input-dirs "github.com/karmada-io/karmada/pkg/apis/search/v1alpha1" \
+  --input-dirs "github.com/karmada-io/karmada/pkg/apis/proxy/v1alpha1" \
   --output-package "github.com/karmada-io/karmada/pkg/generated/openapi" \
   -O zz_generated.openapi
 

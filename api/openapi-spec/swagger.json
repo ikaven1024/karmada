@@ -17053,6 +17053,11 @@
           "version": "v1alpha1"
         },
         {
+          "group": "proxy.karmada.io",
+          "kind": "DeleteOptions",
+          "version": "v1alpha1"
+        },
+        {
           "group": "rbac.authorization.k8s.io",
           "kind": "DeleteOptions",
           "version": "v1"
@@ -17759,6 +17764,11 @@
         },
         {
           "group": "policy.karmada.io",
+          "kind": "WatchEvent",
+          "version": "v1alpha1"
+        },
+        {
+          "group": "proxy.karmada.io",
           "kind": "WatchEvent",
           "version": "v1alpha1"
         },
