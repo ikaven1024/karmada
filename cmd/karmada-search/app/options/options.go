@@ -107,7 +107,7 @@ func (o *Options) Run(ctx context.Context) error {
 
 	server.GenericAPIServer.AddPostStartHookOrDie("start-karmada-search-controller", func(context genericapiserver.PostStartHookContext) error {
 		// start ResourceRegistry controller
-		config.Controller.Start(context.StopCh)
+		// config.Controller.Start(context.StopCh) // Stop search informer while testing proxy benchmark
 		return nil
 	})
 
