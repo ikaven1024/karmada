@@ -73,6 +73,7 @@ func TestController(t *testing.T) {
 		kubeFactory,
 		karmadaFactory,
 		0,
+		nil,
 	)
 	if err != nil {
 		t.Error(err)

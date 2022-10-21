@@ -76,7 +76,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 
 // Complete fills in fields required to have valid data.
 func (o *Options) Complete() error {
-	return nil
+	return lifted.CompleteWatchChanSizes(o.RecommendedOptions)
 }
 
 // Run runs the aggregated-apiserver with options. This should never exit.
@@ -157,11 +157,16 @@ func (o *Options) Config() (*search.Config, error) {
 		return nil, err
 	}
 
+	watchCacheSizes, err := genericoptions.ParseWatchCacheSizes(o.RecommendedOptions.Etcd.WatchCacheSizes)
+	if err != nil {
+		return nil, err
+	}
+
 	karmadaClient := karmadaclientset.NewForConfigOrDie(serverConfig.ClientConfig)
 	factory := informerfactory.NewSharedInformerFactory(karmadaClient, 0)
 
 	proxyCtl, err := proxy.NewController(serverConfig.ClientConfig, restMapper, serverConfig.SharedInformerFactory, factory,
-		time.Second*time.Duration(serverConfig.Config.MinRequestTimeout))
+		time.Second*time.Duration(serverConfig.Config.MinRequestTimeout), watchCacheSizes)
 	if err != nil {
 		return nil, err
 	}

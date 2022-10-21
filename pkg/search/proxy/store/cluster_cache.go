@@ -3,28 +3,23 @@ package store
 import (
 	"sync"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 )
 
 // clusterCache caches resources for single member cluster
 type clusterCache struct {
-	lock        sync.RWMutex
-	cache       map[schema.GroupVersionResource]*resourceCache
-	clusterName string
-	restMapper  meta.RESTMapper
-	// newClientFunc returns a dynamic client for member cluster apiserver
-	newClientFunc func() (dynamic.Interface, error)
+	lock         sync.RWMutex
+	cache        map[schema.GroupVersionResource]*resourceCache
+	clusterName  string
+	storeFactory StorageFactory
 }
 
-func newClusterCache(clusterName string, newClientFunc func() (dynamic.Interface, error), restMapper meta.RESTMapper) *clusterCache {
+func newClusterCache(clusterName string, storeFactory StorageFactory) *clusterCache {
 	return &clusterCache{
-		clusterName:   clusterName,
-		newClientFunc: newClientFunc,
-		restMapper:    restMapper,
-		cache:         map[schema.GroupVersionResource]*resourceCache{},
+		clusterName:  clusterName,
+		storeFactory: storeFactory,
+		cache:        map[schema.GroupVersionResource]*resourceCache{},
 	}
 }
 
@@ -45,18 +40,13 @@ func (c *clusterCache) updateCache(resources map[schema.GroupVersionResource]str
 	for resource := range resources {
 		_, exist := c.cache[resource]
 		if !exist {
-			kind, err := c.restMapper.KindFor(resource)
+			s, err := c.storeFactory.Build(c.clusterName, resource)
 			if err != nil {
 				return err
 			}
-			mapping, err := c.restMapper.RESTMapping(kind.GroupKind(), kind.Version)
-			if err != nil {
-				return err
-			}
-			namespaced := mapping.Scope.Name() == meta.RESTScopeNameNamespace
 
 			klog.Infof("Add cache for %s %s", c.clusterName, resource.String())
-			cache, err := newResourceCache(c.clusterName, resource, kind, namespaced, c.clientForResourceFunc(resource))
+			cache, err := newResourceCache(c.clusterName, resource, s)
 			if err != nil {
 				return err
 			}
@@ -72,16 +62,6 @@ func (c *clusterCache) stop() {
 
 	for _, cache := range c.cache {
 		cache.stop()
-	}
-}
-
-func (c *clusterCache) clientForResourceFunc(resource schema.GroupVersionResource) func() (dynamic.NamespaceableResourceInterface, error) {
-	return func() (dynamic.NamespaceableResourceInterface, error) {
-		client, err := c.newClientFunc()
-		if err != nil {
-			return nil, err
-		}
-		return client.Resource(resource), nil
 	}
 }
 

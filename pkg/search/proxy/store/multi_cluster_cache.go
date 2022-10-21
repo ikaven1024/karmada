@@ -41,19 +41,16 @@ type MultiClusterCache struct {
 	lock            sync.RWMutex
 	cache           map[string]*clusterCache
 	cachedResources map[schema.GroupVersionResource]struct{}
-	restMapper      meta.RESTMapper
-	// newClientFunc returns a dynamic client for member cluster apiserver
-	newClientFunc func(string) (dynamic.Interface, error)
+	storeFactory    StorageFactory
 }
 
 var _ Cache = &MultiClusterCache{}
 var _ RESTReader = &MultiClusterCache{}
 
 // NewMultiClusterCache return a cache for resources from member clusters
-func NewMultiClusterCache(newClientFunc func(string) (dynamic.Interface, error), restMapper meta.RESTMapper) *MultiClusterCache {
+func NewMultiClusterCache(newClientFunc func(string) (dynamic.Interface, error), restMapper meta.RESTMapper, watchCacheSizes map[schema.GroupResource]int) *MultiClusterCache {
 	return &MultiClusterCache{
-		restMapper:      restMapper,
-		newClientFunc:   newClientFunc,
+		storeFactory:    NewStoreFactory(watchCacheSizes, restMapper, newClientFunc),
 		cache:           map[string]*clusterCache{},
 		cachedResources: map[schema.GroupVersionResource]struct{}{},
 	}
@@ -82,7 +79,7 @@ func (c *MultiClusterCache) UpdateCache(resourcesByCluster map[string]map[schema
 		cache, exist := c.cache[clusterName]
 		if !exist {
 			klog.Infof("Add cache for cluster %v", clusterName)
-			cache = newClusterCache(clusterName, c.clientForClusterFunc(clusterName), c.restMapper)
+			cache = newClusterCache(clusterName, c.storeFactory)
 			c.cache[clusterName] = cache
 		}
 		err := cache.updateCache(resources)
@@ -380,10 +377,4 @@ func (c *MultiClusterCache) getResourceFromCache(ctx context.Context, gvr schema
 		return nil, "", nil, apierrors.NewConflict(gvr.GroupResource(), name, fmt.Errorf("ambiguous objects in clusters [%v]", strings.Join(clusterNames, ", ")))
 	}
 	return findObjects[0], findCaches[0].clusterName, findCaches[0], nil
-}
-
-func (c *MultiClusterCache) clientForClusterFunc(cluster string) func() (dynamic.Interface, error) {
-	return func() (dynamic.Interface, error) {
-		return c.newClientFunc(cluster)
-	}
 }

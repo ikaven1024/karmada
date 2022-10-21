@@ -81,4 +81,6 @@ package lifted
 | visitpod_test.go         | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/api/v1/pod/util_test.go#L394-L551                                         | func TestPodSecrets                               | Y       |
 | visitpod_test.go         | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/api/v1/pod/util_test.go#L553-L591                                         | func collectResourcePaths                         | N       |
 | visitpod_test.go         | https://github.com/kubernetes/kubernetes/blob/release-1.23/pkg/api/v1/pod/util_test.go#L593-L695                                         | func TestPodConfigmaps                            | Y       |
+| watch_chan_sizes.go      | https://github.com/kubernetes/kubernetes/blob/release-1.25/cmd/kube-apiserver/app/server.go#L614-L626                                    | func CompleteWatchChanSizes                       | Y       |
+| watch_chan_sizes.go      | https://github.com/kubernetes/kubernetes/blob/release-1.25/pkg/kubeapiserver/default_storage_factory_builder.go#L50-L57                  | func DefaultWatchCacheSizes                       | N       |
 */

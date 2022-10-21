@@ -58,9 +58,7 @@ type Controller struct {
 }
 
 // NewController create a controller for proxy
-func NewController(restConfig *restclient.Config, restMapper meta.RESTMapper,
-	kubeFactory informers.SharedInformerFactory, karmadaFactory informerfactory.SharedInformerFactory,
-	minRequestTimeout time.Duration) (*Controller, error) {
+func NewController(restConfig *restclient.Config, restMapper meta.RESTMapper, kubeFactory informers.SharedInformerFactory, karmadaFactory informerfactory.SharedInformerFactory, minRequestTimeout time.Duration, watchCacheSizes map[schema.GroupResource]int) (*Controller, error) {
 	kp, err := newKarmadaProxy(restConfig)
 	if err != nil {
 		return nil, err
@@ -73,7 +71,8 @@ func NewController(restConfig *restclient.Config, restMapper meta.RESTMapper,
 		clusterLister:        karmadaFactory.Cluster().V1alpha1().Clusters().Lister(),
 		registryLister:       karmadaFactory.Search().V1alpha1().ResourceRegistries().Lister(),
 	}
-	s := store.NewMultiClusterCache(ctl.dynamicClientForCluster, restMapper)
+
+	s := store.NewMultiClusterCache(ctl.dynamicClientForCluster, restMapper, watchCacheSizes)
 
 	ctl.store = s
 	ctl.cacheProxy = newCacheProxy(s, restMapper, minRequestTimeout)

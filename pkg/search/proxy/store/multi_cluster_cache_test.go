@@ -55,7 +55,7 @@ func TestMultiClusterCache_UpdateCache(t *testing.T) {
 	newClientFunc := func(cluster string) (dynamic.Interface, error) {
 		return fakedynamic.NewSimpleDynamicClient(scheme), nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 
 	cluster1 := newCluster("cluster1")
@@ -91,7 +91,7 @@ func TestMultiClusterCache_HasResource(t *testing.T) {
 	newClientFunc := func(cluster string) (dynamic.Interface, error) {
 		return fakeClient, nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 	cluster1 := newCluster("cluster1")
 	cluster2 := newCluster("cluster2")
@@ -162,7 +162,7 @@ func TestMultiClusterCache_GetResourceFromCache(t *testing.T) {
 		}
 		return fakedynamic.NewSimpleDynamicClient(scheme), nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 	err := cache.UpdateCache(resources)
 	if err != nil {
@@ -283,7 +283,7 @@ func TestMultiClusterCache_Get(t *testing.T) {
 		}
 		return fakedynamic.NewSimpleDynamicClient(scheme), nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 	err := cache.UpdateCache(map[string]map[schema.GroupVersionResource]struct{}{
 		cluster1.Name: resourceSet(podGVR, nodeGVR),
@@ -506,7 +506,7 @@ func TestMultiClusterCache_List(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cache := NewMultiClusterCache(newClientFunc, restMapper)
+			cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 			defer cache.Stop()
 			err := cache.UpdateCache(tt.resources)
 			if err != nil {
@@ -574,7 +574,7 @@ func TestMultiClusterCache_List_CacheSourceAnnotation(t *testing.T) {
 		}
 		return fakedynamic.NewSimpleDynamicClient(scheme), nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 	err := cache.UpdateCache(map[string]map[schema.GroupVersionResource]struct{}{
 		cluster1.Name: resourceSet(podGVR),
@@ -628,7 +628,7 @@ func TestMultiClusterCache_Watch(t *testing.T) {
 		}
 		return fakedynamic.NewSimpleDynamicClient(scheme), nil
 	}
-	cache := NewMultiClusterCache(newClientFunc, restMapper)
+	cache := NewMultiClusterCache(newClientFunc, restMapper, nil)
 	defer cache.Stop()
 	err := cache.UpdateCache(map[string]map[schema.GroupVersionResource]struct{}{
 		cluster1.Name: resourceSet(podGVR),
