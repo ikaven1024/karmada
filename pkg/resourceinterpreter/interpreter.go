@@ -10,6 +10,7 @@ import (
 
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
+	"github.com/karmada-io/karmada/pkg/resourceinterpreter/configurableinterpreter"
 	"github.com/karmada-io/karmada/pkg/resourceinterpreter/customizedinterpreter"
 	"github.com/karmada-io/karmada/pkg/resourceinterpreter/customizedinterpreter/webhook"
 	"github.com/karmada-io/karmada/pkg/resourceinterpreter/defaultinterpreter"
@@ -58,8 +59,9 @@ func NewResourceInterpreter(informer genericmanager.SingleClusterInformerManager
 type customResourceInterpreterImpl struct {
 	informer genericmanager.SingleClusterInformerManager
 
-	customizedInterpreter *customizedinterpreter.CustomizedInterpreter
-	defaultInterpreter    *defaultinterpreter.DefaultInterpreter
+	customizedInterpreter   *customizedinterpreter.CustomizedInterpreter
+	defaultInterpreter      *defaultinterpreter.DefaultInterpreter
+	configurableInterpreter *configurableinterpreter.ConfigurableInterpreter
 }
 
 // Start starts running the component and will never stop running until the context is closed or an error occurs.
@@ -67,6 +69,10 @@ func (i *customResourceInterpreterImpl) Start(ctx context.Context) (err error) {
 	klog.Infof("Starting custom resource interpreter.")
 
 	i.customizedInterpreter, err = customizedinterpreter.NewCustomizedInterpreter(i.informer)
+	if err != nil {
+		return
+	}
+	i.configurableInterpreter, err = configurableinterpreter.NewConfigurableInterpreter(i.informer)
 	if err != nil {
 		return
 	}
