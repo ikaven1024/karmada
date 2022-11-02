@@ -35,6 +35,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.DependencyInterpretation":                    schema_pkg_apis_config_v1alpha1_DependencyInterpretation(ref),
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.DependentObjectReference":                    schema_pkg_apis_config_v1alpha1_DependentObjectReference(ref),
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.HealthInterpretation":                        schema_pkg_apis_config_v1alpha1_HealthInterpretation(ref),
+		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation":                              schema_pkg_apis_config_v1alpha1_Interpretation(ref),
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.LocalValueRetention":                         schema_pkg_apis_config_v1alpha1_LocalValueRetention(ref),
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaResourceRequirement":                  schema_pkg_apis_config_v1alpha1_ReplicaResourceRequirement(ref),
 		"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaRevision":                             schema_pkg_apis_config_v1alpha1_ReplicaRevision(ref),
@@ -1091,50 +1092,50 @@ func schema_pkg_apis_config_v1alpha1_CustomizationRules(ref common.ReferenceCall
 					"retention": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Retention describes the desired behavior that Karmada should react on the changes made by member cluster components. This avoids system running into a meaningless loop that Karmada resource controller and the member cluster component continually applying opposite values of a field. For example, the \"replicas\" of Deployment might be changed by the HPA controller on member cluster. In this case, Karmada should retain the \"replicas\" and not try to change it.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.LocalValueRetention"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"replicaResource": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ReplicaResource describes the rules for Karmada to discover the resource's replica as well as resource requirements. It would be useful for those CRD resources that declare workload types like Deployment. It is usually not needed for Kubernetes native resources(Deployment, Job) as Karmada knows how to discover info from them. But if it is set, the built-in discovery rules will be ignored.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaResourceRequirement"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"replicaRevision": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ReplicaRevision describes the rules for Karmada to revise the resource's replica. It would be useful for those CRD resources that declare workload types like Deployment. It is usually not needed for Kubernetes native resources(Deployment, Job) as Karmada knows how to revise replicas for them. But if it is set, the built-in revision rules will be ignored.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaRevision"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"statusReflection": {
 						SchemaProps: spec.SchemaProps{
 							Description: "StatusReflection describes the rules for Karmada to pick the resource's status. Karmada provides built-in rules for several standard Kubernetes types, see: https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#interpretstatus If StatusReflection is set, the built-in rules will be ignored.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.StatusReflection"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"statusAggregation": {
 						SchemaProps: spec.SchemaProps{
 							Description: "StatusAggregation describes the rules for Karmada to aggregate status collected from member clusters to resource template. Karmada provides built-in rules for several standard Kubernetes types, see: https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#aggregatestatus If StatusAggregation is set, the built-in rules will be ignored.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.StatusAggregation"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"healthInterpretation": {
 						SchemaProps: spec.SchemaProps{
 							Description: "HealthInterpretation describes the health assessment rules by which Karmada can assess the health state of the resource type.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.HealthInterpretation"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 					"dependencyInterpretation": {
 						SchemaProps: spec.SchemaProps{
 							Description: "DependencyInterpretation describes the rules for Karmada to analyze the dependent resources. Karmada provides built-in rules for several standard Kubernetes types, see: https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#interpretdependency If DependencyInterpretation is set, the built-in rules will be ignored.",
-							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.DependencyInterpretation"),
+							Ref:         ref("github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.DependencyInterpretation", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.HealthInterpretation", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.LocalValueRetention", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaResourceRequirement", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.ReplicaRevision", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.StatusAggregation", "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.StatusReflection"},
+			"github.com/karmada-io/karmada/pkg/apis/config/v1alpha1.Interpretation"},
 	}
 }
 
@@ -1248,6 +1249,27 @@ func schema_pkg_apis_config_v1alpha1_HealthInterpretation(ref common.ReferenceCa
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
+						},
+					},
+				},
+				Required: []string{"luaScript"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_config_v1alpha1_Interpretation(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Interpretation hold the scripts",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"luaScript": {
+						SchemaProps: spec.SchemaProps{
+							Default: "",
+							Type:    []string{"string"},
+							Format:  "",
 						},
 					},
 				},

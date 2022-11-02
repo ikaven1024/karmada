@@ -55,7 +55,7 @@ type CustomizationRules struct {
 	// controller on member cluster. In this case, Karmada should retain the "replicas"
 	// and not try to change it.
 	// +optional
-	Retention *LocalValueRetention `json:"retention,omitempty"`
+	Retention *Interpretation `json:"retention,omitempty"`
 
 	// ReplicaResource describes the rules for Karmada to discover the resource's
 	// replica as well as resource requirements.
@@ -65,7 +65,7 @@ type CustomizationRules struct {
 	// Karmada knows how to discover info from them. But if it is set, the built-in
 	// discovery rules will be ignored.
 	// +optional
-	ReplicaResource *ReplicaResourceRequirement `json:"replicaResource,omitempty"`
+	ReplicaResource *Interpretation `json:"replicaResource,omitempty"`
 
 	// ReplicaRevision describes the rules for Karmada to revise the resource's replica.
 	// It would be useful for those CRD resources that declare workload types like
@@ -74,14 +74,14 @@ type CustomizationRules struct {
 	// Karmada knows how to revise replicas for them. But if it is set, the built-in
 	// revision rules will be ignored.
 	// +optional
-	ReplicaRevision *ReplicaRevision `json:"replicaRevision,omitempty"`
+	ReplicaRevision *Interpretation `json:"replicaRevision,omitempty"`
 
 	// StatusReflection describes the rules for Karmada to pick the resource's status.
 	// Karmada provides built-in rules for several standard Kubernetes types, see:
 	// https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#interpretstatus
 	// If StatusReflection is set, the built-in rules will be ignored.
 	// +optional
-	StatusReflection *StatusReflection `json:"statusReflection,omitempty"`
+	StatusReflection *Interpretation `json:"statusReflection,omitempty"`
 
 	// StatusAggregation describes the rules for Karmada to aggregate status
 	// collected from member clusters to resource template.
@@ -89,12 +89,12 @@ type CustomizationRules struct {
 	// https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#aggregatestatus
 	// If StatusAggregation is set, the built-in rules will be ignored.
 	// +optional
-	StatusAggregation *StatusAggregation `json:"statusAggregation,omitempty"`
+	StatusAggregation *Interpretation `json:"statusAggregation,omitempty"`
 
 	// HealthInterpretation describes the health assessment rules by which Karmada
 	// can assess the health state of the resource type.
 	// +optional
-	HealthInterpretation *HealthInterpretation `json:"healthInterpretation,omitempty"`
+	HealthInterpretation *Interpretation `json:"healthInterpretation,omitempty"`
 
 	// DependencyInterpretation describes the rules for Karmada to analyze the
 	// dependent resources.
@@ -102,7 +102,12 @@ type CustomizationRules struct {
 	// https://karmada.io/docs/userguide/globalview/customizing-resource-interpreter/#interpretdependency
 	// If DependencyInterpretation is set, the built-in rules will be ignored.
 	// +optional
-	DependencyInterpretation *DependencyInterpretation `json:"dependencyInterpretation,omitempty"`
+	DependencyInterpretation *Interpretation `json:"dependencyInterpretation,omitempty"`
+}
+
+// Interpretation hold the scripts
+type Interpretation struct {
+	LuaScript string `json:"luaScript"`
 }
 
 // LocalValueRetention holds the scripts for retention.

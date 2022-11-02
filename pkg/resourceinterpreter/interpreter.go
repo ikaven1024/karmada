@@ -72,10 +72,7 @@ func (i *customResourceInterpreterImpl) Start(ctx context.Context) (err error) {
 	if err != nil {
 		return
 	}
-	i.configurableInterpreter, err = configurableinterpreter.NewConfigurableInterpreter(i.informer)
-	if err != nil {
-		return
-	}
+	i.configurableInterpreter = configurableinterpreter.NewConfigurableInterpreter(i.informer)
 
 	i.defaultInterpreter = defaultinterpreter.NewDefaultInterpreter()
 
