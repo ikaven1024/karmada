@@ -26,17 +26,20 @@ var resourceInterpreterCustomizationsGVR = schema.GroupVersionResource{
 	Resource: "resourceinterpretercustomizations",
 }
 
-// ConfigurableInterpreter interpret custom resource with resource interpreter customizations configuration
+// ConfigurableInterpreter interprets resources with resource interpreter customizations.
 type ConfigurableInterpreter struct {
 	lock         sync.RWMutex
-	interpreters map[schema.GroupVersionKind]map[configv1alpha1.InterpreterOperation]engine.Function
 	configLister cache.GenericLister
+	interpreters map[schema.GroupVersionKind]map[configv1alpha1.InterpreterOperation]engine.Function
+	ruleLoader   ruleLoader
 }
 
-// NewConfigurableInterpreter return a new ConfigurableInterpreter.
+// NewConfigurableInterpreter builds a new interpreter by registering the
+// event handler to the provided informer instance.
 func NewConfigurableInterpreter(informer genericmanager.SingleClusterInformerManager) *ConfigurableInterpreter {
 	c := &ConfigurableInterpreter{
 		configLister: informer.Lister(resourceInterpreterCustomizationsGVR),
+		ruleLoader:   defaultRuleLoader,
 	}
 
 	informer.ForResource(resourceInterpreterCustomizationsGVR, cache.ResourceEventHandlerFuncs{
@@ -54,66 +57,126 @@ func (c *ConfigurableInterpreter) HookEnabled(objGVK schema.GroupVersionKind, op
 }
 
 // GetReplicas returns the desired replicas of the object as well as the requirements of each replica.
-func (c *ConfigurableInterpreter) GetReplicas(object *unstructured.Unstructured) (replicas int32, require *workv1alpha2.ReplicaRequirements, err error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretReplica)
+func (c *ConfigurableInterpreter) GetReplicas(object *unstructured.Unstructured) (replicas int32, require *workv1alpha2.ReplicaRequirements, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretReplica)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object)
+	if err != nil {
+		return
+	}
+
+	replicas, err = rets[0].Int32()
+	if err != nil {
+		return
+	}
 
 	if r := rets[1]; !r.IsNil() {
 		require = &workv1alpha2.ReplicaRequirements{}
-		r.ConvertTo(require)
+		err = r.Into(require)
 	}
-	return rets[0].Int32(), require, err
+	return
 }
 
 // ReviseReplica revises the replica of the given object.
-func (c *ConfigurableInterpreter) ReviseReplica(object *unstructured.Unstructured, replica int64) (*unstructured.Unstructured, error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationReviseReplica)
+func (c *ConfigurableInterpreter) ReviseReplica(object *unstructured.Unstructured, replica int64) (obj *unstructured.Unstructured, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationReviseReplica)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object, replica)
-	return toUnstructured(rets[0]), err
+	if err != nil {
+		return
+	}
+
+	obj, err = toUnstructured(rets[0])
+	return
 }
 
 // Retain returns the objects that based on the "desired" object but with values retained from the "observed" object.
-func (c *ConfigurableInterpreter) Retain(desired *unstructured.Unstructured, observed *unstructured.Unstructured) (retained *unstructured.Unstructured, err error) {
-	eng, _ := c.getInterpreter(desired.GroupVersionKind(), configv1alpha1.InterpreterOperationRetain)
+func (c *ConfigurableInterpreter) Retain(desired *unstructured.Unstructured, observed *unstructured.Unstructured) (retained *unstructured.Unstructured, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(desired.GroupVersionKind(), configv1alpha1.InterpreterOperationRetain)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(desired, observed)
-	return toUnstructured(rets[0]), err
+	if err != nil {
+		return
+	}
+	retained, err = toUnstructured(rets[0])
+	return
 }
 
 // AggregateStatus returns the objects that based on the 'object' but with status aggregated.
-func (c *ConfigurableInterpreter) AggregateStatus(object *unstructured.Unstructured, aggregatedStatusItems []workv1alpha2.AggregatedStatusItem) (*unstructured.Unstructured, error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationAggregateStatus)
+func (c *ConfigurableInterpreter) AggregateStatus(object *unstructured.Unstructured, aggregatedStatusItems []workv1alpha2.AggregatedStatusItem) (obj *unstructured.Unstructured, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationAggregateStatus)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object, aggregatedStatusItems)
-	return toUnstructured(rets[0]), err
+	if err != nil {
+		return
+	}
+	obj, err = toUnstructured(rets[0])
+	return
 }
 
 // GetDependencies returns the dependent resources of the given object.
-func (c *ConfigurableInterpreter) GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretDependency)
+func (c *ConfigurableInterpreter) GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretDependency)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object)
+	if err != nil {
+		return
+	}
 
 	if r := rets[0]; !r.IsNil() {
-		r.ConvertTo(&dependencies)
+		err = r.Into(&dependencies)
 	}
 	return
 }
 
 // ReflectStatus returns the status of the object.
-func (c *ConfigurableInterpreter) ReflectStatus(object *unstructured.Unstructured) (status *runtime.RawExtension, err error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretStatus)
+func (c *ConfigurableInterpreter) ReflectStatus(object *unstructured.Unstructured) (status *runtime.RawExtension, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretStatus)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object)
+	if err != nil {
+		return
+	}
 
 	if r := rets[0]; !r.IsNil() {
 		status = &runtime.RawExtension{}
-		r.ConvertTo(status)
+		err = r.Into(status)
 	}
 	return
 }
 
 // InterpretHealth returns the health state of the object.
-func (c *ConfigurableInterpreter) InterpretHealth(object *unstructured.Unstructured) (bool, error) {
-	eng, _ := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretHealth)
+func (c *ConfigurableInterpreter) InterpretHealth(object *unstructured.Unstructured) (healthy bool, enabled bool, err error) {
+	eng, enabled := c.getInterpreter(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretHealth)
+	if !enabled {
+		return
+	}
+
 	rets, err := eng.Invoke(object)
-	return rets[0].Bool(), err
+	if err != nil {
+		return
+	}
+
+	healthy, err = rets[0].Bool()
+	return
 }
 
 // getInterpreter returns interpreter for specific resource kind and operation.
@@ -140,22 +203,18 @@ func (c *ConfigurableInterpreter) updateConfiguration() {
 		configs[i] = config
 	}
 
-	newInterpreters, err := loadConfig(configs)
+	err = c.loadConfig(configs)
 	if err != nil {
 		klog.Error(err)
 	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.interpreters = newInterpreters
 }
 
-func loadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) (map[schema.GroupVersionKind]map[configv1alpha1.InterpreterOperation]engine.Function, error) {
+func (c *ConfigurableInterpreter) loadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) error {
 	interpreters := map[schema.GroupVersionKind]map[configv1alpha1.InterpreterOperation]engine.Function{}
 	for _, customization := range configs {
 		gv, err := schema.ParseGroupVersion(customization.Spec.Target.APIVersion)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		kind := gv.WithKind(customization.Spec.Target.Kind)
 		interps, ok := interpreters[kind]
@@ -163,78 +222,106 @@ func loadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) (map
 			interps = map[configv1alpha1.InterpreterOperation]engine.Function{}
 			interpreters[kind] = interps
 		}
-		if err = loadRulersInto(customization.Spec.Customizations, interps); err != nil {
-			return nil, err
+		if err = c.ruleLoader.Load(customization.Spec.Customizations, interps); err != nil {
+			return err
 		}
 	}
-	return interpreters, nil
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.interpreters = interpreters
+	return nil
 }
 
-//nolint:gocyclo
-func loadRulersInto(rulers configv1alpha1.CustomizationRules, into map[configv1alpha1.InterpreterOperation]engine.Function) error {
-	if rulers.Retention != nil && rulers.Retention.LuaScript != "" {
-		f, err := lua.Load(rulers.Retention.LuaScript)
-		if err != nil {
-			return err
-		}
-		into[configv1alpha1.InterpreterOperationRetain] = f
-	}
+type ruleLoader []struct {
+	operation configv1alpha1.InterpreterOperation
+	load      func(rulers configv1alpha1.CustomizationRules) (engine.Function, error)
+}
 
-	if rulers.ReplicaResource != nil && rulers.ReplicaResource.LuaScript != "" {
-		f, err := lua.Load(rulers.ReplicaResource.LuaScript)
+func (r ruleLoader) Load(rules configv1alpha1.CustomizationRules, into map[configv1alpha1.InterpreterOperation]engine.Function) error {
+	for _, rr := range r {
+		f, err := rr.load(rules)
 		if err != nil {
 			return err
 		}
-		into[configv1alpha1.InterpreterOperationInterpretReplica] = f
-	}
-
-	if rulers.ReplicaRevision != nil && rulers.ReplicaRevision.LuaScript != "" {
-		f, err := lua.Load(rulers.ReplicaRevision.LuaScript)
-		if err != nil {
-			return err
+		if f != nil {
+			into[rr.operation] = f
 		}
-		into[configv1alpha1.InterpreterOperationReviseReplica] = f
-	}
-
-	if rulers.StatusReflection != nil && rulers.StatusReflection.LuaScript != "" {
-		f, err := lua.Load(rulers.StatusReflection.LuaScript)
-		if err != nil {
-			return err
-		}
-		into[configv1alpha1.InterpreterOperationInterpretStatus] = f
-	}
-
-	if rulers.StatusAggregation != nil && rulers.StatusAggregation.LuaScript != "" {
-		f, err := lua.Load(rulers.StatusAggregation.LuaScript)
-		if err != nil {
-			return err
-		}
-		into[configv1alpha1.InterpreterOperationAggregateStatus] = f
-	}
-
-	if rulers.HealthInterpretation != nil && rulers.HealthInterpretation.LuaScript != "" {
-		f, err := lua.Load(rulers.HealthInterpretation.LuaScript)
-		if err != nil {
-			return err
-		}
-		into[configv1alpha1.InterpreterOperationInterpretHealth] = f
-	}
-
-	if rulers.DependencyInterpretation != nil && rulers.DependencyInterpretation.LuaScript != "" {
-		f, err := lua.Load(rulers.DependencyInterpretation.LuaScript)
-		if err != nil {
-			return err
-		}
-		into[configv1alpha1.InterpreterOperationInterpretDependency] = f
 	}
 	return nil
 }
 
-func toUnstructured(v engine.Value) *unstructured.Unstructured {
+var defaultRuleLoader = ruleLoader{
+	{
+		operation: configv1alpha1.InterpreterOperationRetain,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.Retention != nil && rulers.Retention.LuaScript != "" {
+				return lua.Load(rulers.Retention.LuaScript, "Retain", 1)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationInterpretReplica,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.ReplicaResource != nil && rulers.ReplicaResource.LuaScript != "" {
+				return lua.Load(rulers.ReplicaResource.LuaScript, "GetReplicas", 2)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationReviseReplica,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.ReplicaRevision != nil && rulers.ReplicaRevision.LuaScript != "" {
+				return lua.Load(rulers.ReplicaRevision.LuaScript, "ReviseReplica", 1)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationInterpretStatus,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.StatusReflection != nil && rulers.StatusReflection.LuaScript != "" {
+				return lua.Load(rulers.StatusReflection.LuaScript, "ReflectStatus", 1)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationAggregateStatus,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.StatusAggregation != nil && rulers.StatusAggregation.LuaScript != "" {
+				return lua.Load(rulers.StatusAggregation.LuaScript, "AggregateStatus", 1)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationInterpretHealth,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.HealthInterpretation != nil && rulers.HealthInterpretation.LuaScript != "" {
+				return lua.Load(rulers.HealthInterpretation.LuaScript, "InterpretHealth", 1)
+			}
+			return nil, nil
+		},
+	},
+	{
+		operation: configv1alpha1.InterpreterOperationInterpretDependency,
+		load: func(rulers configv1alpha1.CustomizationRules) (engine.Function, error) {
+			if rulers.DependencyInterpretation != nil && rulers.DependencyInterpretation.LuaScript != "" {
+				return lua.Load(rulers.DependencyInterpretation.LuaScript, "GetDependencies", 1)
+			}
+			return nil, nil
+		},
+	},
+}
+
+func toUnstructured(v engine.Value) (*unstructured.Unstructured, error) {
 	if v.IsNil() {
-		return nil
+		return nil, nil
 	}
 	u := &unstructured.Unstructured{}
-	v.ConvertTo(u)
-	return u
+	err := v.Into(u)
+	return u, err
 }

@@ -11,7 +11,7 @@ type FunctionFunc func(args ...interface{}) (rets []Value, err error)
 
 // Invoke implements Function.Invoke
 func (f FunctionFunc) Invoke(args ...interface{}) (rets []Value, err error) {
-	return f(args)
+	return f(args...)
 }
 
 // Value knows how to convert value to Go type.
@@ -20,13 +20,13 @@ type Value interface {
 	IsNil() bool
 
 	// Int32 convert value o int32
-	Int32() int32
+	Int32() (int32, error)
 
 	// Bool convert value to bool
-	Bool() bool
+	Bool() (bool, error)
 
-	// ConvertTo converts value to the given object. Given object must be a pointer, and can not be nil.
-	ConvertTo(interface{})
+	// Into converts value to the given object. Given object must be a pointer, and can not be nil.
+	Into(interface{}) error
 
 	// add more converters ...
 }
