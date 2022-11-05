@@ -90,6 +90,7 @@ func NewKarmadaCtlCommand(cmdUse, parentCommand string) *cobra.Command {
 				NewCmdLogs(f, parentCommand, ioStreams),
 				NewCmdExec(f, parentCommand, ioStreams),
 				NewCmdDescribe(f, parentCommand, ioStreams),
+				NewCmdInterpret(f, parentCommand, ioStreams),
 			},
 		},
 		{
