@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -24,71 +25,100 @@ var resourceInterpreterCustomizationsGVR = schema.GroupVersionResource{
 
 // ConfigManager can list custom resource interpreter.
 type ConfigManager interface {
-	LuaScriptAccessors() map[schema.GroupVersionKind]LuaScriptAccessor
-	HasSynced() bool
+	// IsEnabled tells if any interpreter exist for specific resource type and operation.
+	IsEnabled(schema.GroupVersionKind, configv1alpha1.InterpreterOperation) bool
+
+	// GetInterpreters returns interpreters for specific resource type.
+	GetInterpreters(kind schema.GroupVersionKind) InterpreterManager
 }
 
 // interpreterConfigManager collects the resource interpreter customization.
 type interpreterConfigManager struct {
-	initialSynced *atomic.Value
 	lister        cache.GenericLister
 	configuration *atomic.Value
-}
-
-// LuaScriptAccessors returns all cached configurations.
-func (configManager *interpreterConfigManager) LuaScriptAccessors() map[schema.GroupVersionKind]LuaScriptAccessor {
-	return configManager.configuration.Load().(map[schema.GroupVersionKind]LuaScriptAccessor)
-}
-
-// HasSynced returns true when the cache is synced.
-func (configManager *interpreterConfigManager) HasSynced() bool {
-	if configManager.initialSynced.Load().(bool) {
-		return true
-	}
-
-	if configManager.HasSynced() {
-		configManager.initialSynced.Store(true)
-		return true
-	}
-	return false
 }
 
 // NewInterpreterConfigManager watches ResourceInterpreterCustomization and organizes
 // the configurations in the cache.
 func NewInterpreterConfigManager(inform genericmanager.SingleClusterInformerManager) ConfigManager {
-	manager := &interpreterConfigManager{
+	m := &interpreterConfigManager{
 		lister:        inform.Lister(resourceInterpreterCustomizationsGVR),
-		initialSynced: &atomic.Value{},
 		configuration: &atomic.Value{},
 	}
-	manager.configuration.Store(make(map[schema.GroupVersionKind]LuaScriptAccessor))
-	manager.initialSynced.Store(false)
+
 	configHandlers := fedinformer.NewHandlerOnEvents(
-		func(_ interface{}) { manager.updateConfiguration() },
-		func(_, _ interface{}) { manager.updateConfiguration() },
-		func(_ interface{}) { manager.updateConfiguration() })
+		func(_ interface{}) { m.updateConfiguration() },
+		func(_, _ interface{}) { m.updateConfiguration() },
+		func(_ interface{}) { m.updateConfiguration() })
 	inform.ForResource(resourceInterpreterCustomizationsGVR, configHandlers)
-	return manager
+	return m
 }
 
-func (configManager *interpreterConfigManager) updateConfiguration() {
-	configurations, err := configManager.lister.List(labels.Everything())
+func (m *interpreterConfigManager) IsEnabled(kind schema.GroupVersionKind, operation configv1alpha1.InterpreterOperation) bool {
+	interpreters := m.GetInterpreters(kind)
+	return interpreters != nil && interpreters.IsEnabled(operation)
+}
+
+func (m *interpreterConfigManager) GetInterpreters(kind schema.GroupVersionKind) InterpreterManager {
+	v := m.configuration.Load()
+	if v != nil {
+		configs := v.(map[schema.GroupVersionKind]InterpreterManager)
+		return configs[kind]
+	}
+	return nil
+}
+
+func (m *interpreterConfigManager) updateConfiguration() {
+	objs, err := m.lister.List(labels.Everything())
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("error updating configuration: %v", err))
 		return
 	}
-	configs := make(map[schema.GroupVersionKind]CustomAccessor, len(configurations))
 
-	for _, c := range configurations {
-		config := &configv1alpha1.ResourceInterpreterCustomization{}
-		if err = helper.ConvertToTypedObject(c, config); err != nil {
-			klog.Errorf("Failed to transform ResourceInterpreterCustomization: %w", err)
-			return
-		}
-		key := schema.FromAPIVersionAndKind(config.Spec.Target.APIVersion, config.Spec.Target.Kind)
-		configs[key] = NewResourceCustomAccessorAccessor(config)
+	configs, err := convertToCustomization(objs)
+	if err != nil {
+		klog.Error(err)
+		return
 	}
 
-	configManager.configuration.Store(configs)
-	configManager.initialSynced.Store(true)
+	interpreters, err := loadConfig(configs)
+	if err != nil {
+		klog.Error(err)
+		return
+	}
+
+	m.configuration.Store(interpreters)
+}
+
+// loadConfig load customization rules.
+func loadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) (map[schema.GroupVersionKind]InterpreterManager, error) {
+	allInterpreters := map[schema.GroupVersionKind]InterpreterManager{}
+	for _, customization := range configs {
+		kind := schema.FromAPIVersionAndKind(customization.Spec.Target.APIVersion, customization.Spec.Target.Kind)
+
+		interprets, ok := allInterpreters[kind]
+		if !ok {
+			interprets = newInterpreterManager()
+			allInterpreters[kind] = interprets
+		}
+
+		err := interprets.LoadConfig(customization.Spec.Customizations)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return allInterpreters, nil
+}
+
+func convertToCustomization(objs []runtime.Object) ([]*configv1alpha1.ResourceInterpreterCustomization, error) {
+	configs := make([]*configv1alpha1.ResourceInterpreterCustomization, len(objs))
+	for i, obj := range objs {
+		config := &configv1alpha1.ResourceInterpreterCustomization{}
+		if err := helper.ConvertToTypedObject(obj, config); err != nil {
+			return nil, fmt.Errorf("failed to transform ResourceInterpreterCustomization: %v", err)
+		}
+		configs[i] = config
+	}
+	return configs, nil
 }
