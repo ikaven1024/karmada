@@ -1,6 +1,7 @@
 package binding
 
 import (
+	"context"
 	"reflect"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -12,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
 	"github.com/karmada-io/karmada/pkg/resourceinterpreter"
@@ -94,13 +94,11 @@ func ensureWork(
 		}
 
 		if hasScheduledReplica {
-			if resourceInterpreter.HookEnabled(clonedWorkload.GroupVersionKind(), configv1alpha1.InterpreterOperationReviseReplica) {
-				clonedWorkload, err = resourceInterpreter.ReviseReplica(clonedWorkload, desireReplicaInfos[targetCluster.Name])
-				if err != nil {
-					klog.Errorf("failed to revise replica for %s/%s/%s in cluster %s, err is: %v",
-						workload.GetKind(), workload.GetNamespace(), workload.GetName(), targetCluster.Name, err)
-					return err
-				}
+			clonedWorkload, _, err = resourceInterpreter.ReviseReplica(context.TODO(), clonedWorkload, desireReplicaInfos[targetCluster.Name])
+			if err != nil {
+				klog.Errorf("failed to revise replica for %s/%s/%s in cluster %s, err is: %v",
+					workload.GetKind(), workload.GetNamespace(), workload.GetName(), targetCluster.Name, err)
+				return err
 			}
 
 			// Set allocated completions for Job only when the '.spec.completions' field not omitted from resource template.

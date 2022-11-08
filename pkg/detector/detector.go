@@ -26,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
 	"github.com/karmada-io/karmada/pkg/resourceinterpreter"
@@ -620,12 +619,12 @@ func (d *ResourceDetector) BuildResourceBinding(object *unstructured.Unstructure
 		},
 	}
 
-	if d.ResourceInterpreter.HookEnabled(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretReplica) {
-		replicas, replicaRequirements, err := d.ResourceInterpreter.GetReplicas(object)
-		if err != nil {
-			klog.Errorf("Failed to customize replicas for %s(%s), %v", object.GroupVersionKind(), object.GetName(), err)
-			return nil, err
-		}
+	replicas, replicaRequirements, handled, err := d.ResourceInterpreter.GetReplicas(context.TODO(), object)
+	if err != nil {
+		klog.Errorf("Failed to customize replicas for %s(%s), %v", object.GroupVersionKind(), object.GetName(), err)
+		return nil, err
+	}
+	if handled {
 		propagationBinding.Spec.Replicas = replicas
 		propagationBinding.Spec.ReplicaRequirements = replicaRequirements
 	}
@@ -657,12 +656,12 @@ func (d *ResourceDetector) BuildClusterResourceBinding(object *unstructured.Unst
 		},
 	}
 
-	if d.ResourceInterpreter.HookEnabled(object.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretReplica) {
-		replicas, replicaRequirements, err := d.ResourceInterpreter.GetReplicas(object)
-		if err != nil {
-			klog.Errorf("Failed to customize replicas for %s(%s), %v", object.GroupVersionKind(), object.GetName(), err)
-			return nil, err
-		}
+	replicas, replicaRequirements, handled, err := d.ResourceInterpreter.GetReplicas(context.TODO(), object)
+	if err != nil {
+		klog.Errorf("Failed to customize replicas for %s(%s), %v", object.GroupVersionKind(), object.GetName(), err)
+		return nil, err
+	}
+	if handled {
 		binding.Spec.Replicas = replicas
 		binding.Spec.ReplicaRequirements = replicaRequirements
 	}

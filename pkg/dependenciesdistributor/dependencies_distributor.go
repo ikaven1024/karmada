@@ -330,14 +330,13 @@ func (d *DependenciesDistributor) ReconcileResourceBinding(key util.QueueKey) er
 		return err
 	}
 
-	if !d.ResourceInterpreter.HookEnabled(workload.GroupVersionKind(), configv1alpha1.InterpreterOperationInterpretDependency) {
-		return nil
-	}
-
-	dependencies, err := d.ResourceInterpreter.GetDependencies(workload)
+	dependencies, handled, err := d.ResourceInterpreter.GetDependencies(context.TODO(), workload)
 	if err != nil {
 		klog.Errorf("Failed to customize dependencies for %s(%s), %v", workload.GroupVersionKind(), workload.GetName(), err)
 		return err
+	}
+	if !handled {
+		return nil
 	}
 
 	return d.syncScheduleResultToAttachedBindings(bindingObject, dependencies)

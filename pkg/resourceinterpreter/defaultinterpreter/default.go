@@ -1,7 +1,7 @@
 package defaultinterpreter
 
 import (
-	"fmt"
+	"context"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -10,6 +10,8 @@ import (
 
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
+	"github.com/karmada-io/karmada/pkg/resourceinterpreter"
+	"github.com/karmada-io/karmada/pkg/util/fedinformer/genericmanager"
 )
 
 // DefaultInterpreter contains all default operation interpreter factory
@@ -24,8 +26,8 @@ type DefaultInterpreter struct {
 	healthHandlers          map[schema.GroupVersionKind]healthInterpreter
 }
 
-// NewDefaultInterpreter return a new DefaultInterpreter.
-func NewDefaultInterpreter() *DefaultInterpreter {
+// New return a new DefaultInterpreter.
+func New(_ genericmanager.SingleClusterInformerManager) (resourceinterpreter.ResourceInterpreter, error) {
 	return &DefaultInterpreter{
 		replicaHandlers:         getAllDefaultReplicaInterpreter(),
 		reviseReplicaHandlers:   getAllDefaultReviseReplicaInterpreter(),
@@ -34,7 +36,7 @@ func NewDefaultInterpreter() *DefaultInterpreter {
 		dependenciesHandlers:    getAllDefaultDependenciesInterpreter(),
 		reflectStatusHandlers:   getAllDefaultReflectStatusInterpreter(),
 		healthHandlers:          getAllDefaultHealthInterpreter(),
-	}
+	}, nil
 }
 
 // HookEnabled tells if any hook exist for specific resource type and operation type.
@@ -74,67 +76,77 @@ func (e *DefaultInterpreter) HookEnabled(kind schema.GroupVersionKind, operation
 }
 
 // GetReplicas returns the desired replicas of the object as well as the requirements of each replica.
-func (e *DefaultInterpreter) GetReplicas(object *unstructured.Unstructured) (int32, *workv1alpha2.ReplicaRequirements, error) {
+func (e *DefaultInterpreter) GetReplicas(_ context.Context, object *unstructured.Unstructured) (int32, *workv1alpha2.ReplicaRequirements, bool, error) {
 	handler, exist := e.replicaHandlers[object.GroupVersionKind()]
 	if !exist {
-		return 0, &workv1alpha2.ReplicaRequirements{}, fmt.Errorf("default %s interpreter for %q not found", configv1alpha1.InterpreterOperationInterpretReplica, object.GroupVersionKind())
+		return 0, nil, false, nil
 	}
-	return handler(object)
+	replicas, requirements, err := handler(object)
+	return replicas, requirements, true, err
 }
 
 // ReviseReplica revises the replica of the given object.
-func (e *DefaultInterpreter) ReviseReplica(object *unstructured.Unstructured, replica int64) (*unstructured.Unstructured, error) {
+func (e *DefaultInterpreter) ReviseReplica(_ context.Context, object *unstructured.Unstructured, replica int64) (*unstructured.Unstructured, bool, error) {
 	handler, exist := e.reviseReplicaHandlers[object.GroupVersionKind()]
 	if !exist {
-		return nil, fmt.Errorf("default %s interpreter for %q not found", configv1alpha1.InterpreterOperationReviseReplica, object.GroupVersionKind())
+		return nil, false, nil
 	}
-	return handler(object, replica)
+	obj, err := handler(object, replica)
+	return obj, true, err
 }
 
 // Retain returns the objects that based on the "desired" object but with values retained from the "observed" object.
-func (e *DefaultInterpreter) Retain(desired *unstructured.Unstructured, observed *unstructured.Unstructured) (retained *unstructured.Unstructured, err error) {
+func (e *DefaultInterpreter) Retain(_ context.Context, desired *unstructured.Unstructured, observed *unstructured.Unstructured) (retained *unstructured.Unstructured, handled bool, err error) {
 	handler, exist := e.retentionHandlers[desired.GroupVersionKind()]
 	if !exist {
-		return nil, fmt.Errorf("default %s interpreter for %q not found", configv1alpha1.InterpreterOperationRetain, desired.GroupVersionKind())
+		return nil, false, nil
 	}
-	return handler(desired, observed)
+	handled = true
+	retained, err = handler(desired, observed)
+	return
 }
 
 // AggregateStatus returns the objects that based on the 'object' but with status aggregated.
-func (e *DefaultInterpreter) AggregateStatus(object *unstructured.Unstructured, aggregatedStatusItems []workv1alpha2.AggregatedStatusItem) (*unstructured.Unstructured, error) {
+func (e *DefaultInterpreter) AggregateStatus(_ context.Context, object *unstructured.Unstructured, aggregatedStatusItems []workv1alpha2.AggregatedStatusItem) (*unstructured.Unstructured, bool, error) {
 	handler, exist := e.aggregateStatusHandlers[object.GroupVersionKind()]
 	if !exist {
-		return nil, fmt.Errorf("default %s interpreter for %q not found", configv1alpha1.InterpreterOperationAggregateStatus, object.GroupVersionKind())
+		return nil, false, nil
 	}
-	return handler(object, aggregatedStatusItems)
+	obj, err := handler(object, aggregatedStatusItems)
+	return obj, true, err
 }
 
 // GetDependencies returns the dependent resources of the given object.
-func (e *DefaultInterpreter) GetDependencies(object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, err error) {
+func (e *DefaultInterpreter) GetDependencies(_ context.Context, object *unstructured.Unstructured) (dependencies []configv1alpha1.DependentObjectReference, handled bool, err error) {
 	handler, exist := e.dependenciesHandlers[object.GroupVersionKind()]
 	if !exist {
-		return dependencies, fmt.Errorf("default interpreter for operation %s not found", configv1alpha1.InterpreterOperationInterpretDependency)
+		return nil, false, nil
 	}
-	return handler(object)
+	handled = true
+	dependencies, err = handler(object)
+	return
 }
 
 // ReflectStatus returns the status of the object.
-func (e *DefaultInterpreter) ReflectStatus(object *unstructured.Unstructured) (status *runtime.RawExtension, err error) {
+func (e *DefaultInterpreter) ReflectStatus(_ context.Context, object *unstructured.Unstructured) (status *runtime.RawExtension, handled bool, err error) {
 	handler, exist := e.reflectStatusHandlers[object.GroupVersionKind()]
 	if exist {
-		return handler(object)
+		status, err = handler(object)
+		return status, true, err
 	}
 
 	// for resource types that don't have a build-in handler, try to collect the whole status from '.status' filed.
-	return reflectWholeStatus(object)
+	status, err = reflectWholeStatus(object)
+	return status, true, err
 }
 
 // InterpretHealth returns the health state of the object.
-func (e *DefaultInterpreter) InterpretHealth(object *unstructured.Unstructured) (bool, error) {
+func (e *DefaultInterpreter) InterpretHealth(_ context.Context, object *unstructured.Unstructured) (bool, bool, error) {
 	handler, exist := e.healthHandlers[object.GroupVersionKind()]
-	if exist {
-		return handler(object)
+	if !exist {
+		return false, false, nil
 	}
 
-	return false, fmt.Errorf("default %s interpreter for %q not found", configv1alpha1.InterpreterOperationInterpretHealth, object.GroupVersionKind())
+	healthy, err := handler(object)
+	return healthy, true, err
 }
