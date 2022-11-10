@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 
 	lua "github.com/yuin/gopher-lua"
@@ -151,14 +152,9 @@ func (v value) Bool() (bool, error) {
 }
 
 func (v value) Into(obj interface{}) error {
-	_, err := conversion.EnforcePtr(obj)
+	t, err := conversion.EnforcePtr(obj)
 	if err != nil {
 		return fmt.Errorf("%#v is not pointer", v.v)
-	}
-
-	data, err := luajson.Encode(v.v)
-	if err != nil {
-		return fmt.Errorf("luajson Encode obj %#v error: %v", v.v, err)
 	}
 
 	// For example, `GetReplicas` returns requirement with empty:
@@ -174,21 +170,14 @@ func (v value) Into(obj interface{}) error {
 	// While go json fails to unmarshal `[]` to ReplicaRequirements.NodeClaim object.
 	// ReplicaRequirements object.
 	//
-	// Here we handle it with an ineffective way:
-	//   1. Unmarshal the json to map[string]interface:
-	//     map[string]interface{
-	//         "nodeClaim": []interface{},
-	//         "resourceRequest": map[string]interface{
-	//             "cpu": "100m"
+	// Here we handle it as follows:
+	//   1. Walk the object (lua table), delete the key with empty value (`nodeClaim` in this example):
+	//     {
+	//         resourceRequest: {
+	//             cpu: "100m"
 	//         }
 	//     }
-	//   2. Walk the map and delete the empty slice ([]interface{}). to be:
-	//     map[string]interface{
-	//         "resourceRequest": map[string]interface{
-	//             "cpu": "100m"
-	//         }
-	//     }
-	//   3. Marshal the new map to json:
+	//   2. Encode the object with luajson to be:
 	//     {"resourceRequest": {"cpu": "100m"}}
 	//   4. Finally, unmarshal the new json to object, get
 	//     {
@@ -196,30 +185,32 @@ func (v value) Into(obj interface{}) error {
 	//             cpu: "100m"
 	//         }
 	//     }
-	//
-	// TODO: improve the ineffective handles.
 
-	m := make(map[string]interface{})
-	err = json.Unmarshal(data, &m)
-	if err != nil {
-		return err
-	}
-
-	var walk func(map[string]interface{})
-	walk = func(m map[string]interface{}) {
-		for k, v := range m {
-			if mm, ok := v.(map[string]interface{}); ok {
-				walk(mm)
-			} else if a, ok := v.([]interface{}); ok && len(a) == 0 {
-				delete(m, k)
-			}
+	var walk func(v lua.LValue)
+	walk = func(v lua.LValue) {
+		if t, ok := v.(*lua.LTable); ok {
+			t.ForEach(func(key lua.LValue, value lua.LValue) {
+				if tt, ok := value.(*lua.LTable); ok {
+					if tt.Len() == 0 {
+						t.RawSetH(key, lua.LNil)
+					} else {
+						walk(value)
+					}
+				}
+			})
 		}
 	}
-	walk(m)
 
-	data, err = json.Marshal(m)
+	walk(v.v)
+
+	data, err := luajson.Encode(v.v)
 	if err != nil {
-		return err
+		return fmt.Errorf("luajson Encode obj %#v error: %v", v.v, err)
+	}
+
+	//  If the josn is a table, and we want a object. Convert `[...]` to `{...}`
+	if t.Kind() == reflect.Struct && len(data) > 1 && data[0] == '[' {
+		data[0], data[len(data)-1] = '{', '}'
 	}
 
 	err = json.Unmarshal(data, obj)
@@ -276,7 +267,7 @@ func toValue(l *lua.LState, obj interface{}) (lua.LValue, error) {
 			if err != nil {
 				return nil, err
 			}
-			tbl.RawSetH(lua.LString(key), v)
+			tbl.RawSetString(key, v)
 		}
 		return tbl, nil
 	case nil:

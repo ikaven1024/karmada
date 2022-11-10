@@ -265,7 +265,7 @@ func Test_toValue(t *testing.T) {
 			},
 			want: func() lua.LValue {
 				m := &lua.LTable{}
-				m.RawSetH(lua.LString("foo"), lua.LNumber(1))
+				m.RawSetString("foo", lua.LNumber(1))
 
 				v := &lua.LTable{}
 				v.Append(m)
@@ -286,7 +286,7 @@ func Test_toValue(t *testing.T) {
 			},
 			want: func() lua.LValue {
 				v := &lua.LTable{}
-				v.RawSetH(lua.LString("Foo"), lua.LString("foo"))
+				v.RawSetString("Foo", lua.LString("foo"))
 				return v
 			}(),
 		},
@@ -371,7 +371,7 @@ func Test_value_Into(t *testing.T) {
 			fields: fields{
 				v: func() lua.LValue {
 					v := &lua.LTable{}
-					v.RawSetH(lua.LString("Foo"), &lua.LTable{})
+					v.RawSetString("Foo", &lua.LTable{})
 					return v
 				}(),
 			},
@@ -387,8 +387,8 @@ func Test_value_Into(t *testing.T) {
 			fields: fields{
 				v: func() lua.LValue {
 					v := &lua.LTable{}
-					v.RawSetH(lua.LString("Foo"), lua.LString("foo"))
-					v.RawSetH(lua.LString("Bar"), lua.LNumber(1))
+					v.RawSetString("Foo", lua.LString("foo"))
+					v.RawSetString("Bar", lua.LNumber(1))
 					return v
 				}(),
 			},
