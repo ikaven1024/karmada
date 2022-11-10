@@ -110,6 +110,7 @@ func (v value) Into(obj interface{}) error {
 
 	// In lua, `{}` indicates array and table. Luajson encodes it to `[]`.
 	// So before converting to struct, convert it to '{}'.
+	// TODO: what empty struct in fields, such as: {foo: {}}
 	if t.Kind() == reflect.Struct && len(data) > 1 && data[0] == '[' {
 		data[0], data[len(data)-1] = '{', '}'
 	}

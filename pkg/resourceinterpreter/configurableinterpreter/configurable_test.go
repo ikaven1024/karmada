@@ -138,7 +138,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -254,7 +254,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -343,7 +343,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -443,7 +443,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -544,7 +544,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -634,7 +634,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -718,7 +718,7 @@ end
 	c := &ConfigurableInterpreter{
 		ruleLoader: defaultRuleLoader,
 	}
-	err := c.loadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
+	err := c.LoadConfig([]*configv1alpha1.ResourceInterpreterCustomization{{
 		Spec: configv1alpha1.ResourceInterpreterCustomizationSpec{
 			Target: configv1alpha1.CustomizationTarget{
 				APIVersion: appsv1.SchemeGroupVersion.String(),

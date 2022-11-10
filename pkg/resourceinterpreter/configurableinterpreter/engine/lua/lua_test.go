@@ -178,38 +178,6 @@ end`,
 	}
 }
 
-//
-// func Test_value(t *testing.T) {
-// 	tests := []struct {
-// 		name string
-// 		v    value
-// 		want func(engine.Value) error
-// 	}{
-// 		{
-// 			name: "nil",
-// 			v:    value{v: lua.LNil},
-// 			want: wantNil,
-// 		},
-// 		{
-// 			name: "int32",
-// 			v:    value{v: lua.LNumber(1)},
-// 			want: wantInt32(1),
-// 		},
-// 		{
-// 			name: "bool",
-// 			v:    value{v: lua.LBool(true)},
-// 			want: wantBool(true),
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			if err := tt.want(tt.v); err != nil {
-// 				t.Error(err)
-// 			}
-// 		})
-// 	}
-// }
-
 // Utils:
 
 const (

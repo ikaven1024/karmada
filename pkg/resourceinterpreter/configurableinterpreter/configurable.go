@@ -50,6 +50,12 @@ func NewConfigurableInterpreter(informer genericmanager.SingleClusterInformerMan
 	return c
 }
 
+func NewConfigurableInterpreterWithoutInformer() *ConfigurableInterpreter {
+	return &ConfigurableInterpreter{
+		ruleLoader: defaultRuleLoader,
+	}
+}
+
 // HookEnabled tells if any hook exist for specific resource type and operation.
 func (c *ConfigurableInterpreter) HookEnabled(objGVK schema.GroupVersionKind, operation configv1alpha1.InterpreterOperation) bool {
 	_, enabled := c.getInterpreter(objGVK, operation)
@@ -203,13 +209,13 @@ func (c *ConfigurableInterpreter) updateConfiguration() {
 		configs[i] = config
 	}
 
-	err = c.loadConfig(configs)
+	err = c.LoadConfig(configs)
 	if err != nil {
 		klog.Error(err)
 	}
 }
 
-func (c *ConfigurableInterpreter) loadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) error {
+func (c *ConfigurableInterpreter) LoadConfig(configs []*configv1alpha1.ResourceInterpreterCustomization) error {
 	interpreters := map[schema.GroupVersionKind]map[configv1alpha1.InterpreterOperation]engine.Function{}
 	for _, customization := range configs {
 		gv, err := schema.ParseGroupVersion(customization.Spec.Target.APIVersion)

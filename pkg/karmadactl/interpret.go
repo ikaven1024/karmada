@@ -2,22 +2,22 @@ package karmadactl
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/cli-runtime/pkg/resource"
+	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+	"k8s.io/kubectl/pkg/cmd/util/editor"
 	"k8s.io/kubectl/pkg/util/templates"
 
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
 	"github.com/karmada-io/karmada/pkg/karmadactl/util"
 	"github.com/karmada-io/karmada/pkg/karmadactl/util/genericresource"
-	"github.com/karmada-io/karmada/pkg/resourceinterpreter"
+	"github.com/karmada-io/karmada/pkg/util/gclient"
 	"github.com/karmada-io/karmada/pkg/util/helper"
 )
 
@@ -66,27 +66,21 @@ var (
 // NewCmdInterpret new interpret command.
 func NewCmdInterpret(f util.Factory, parentCommand string, streams genericclioptions.IOStreams) *cobra.Command {
 	o := &InterpretOptions{
-		IOStreams: streams,
-		Rules:     defaultRules,
+		EditOptions: editor.NewEditOptions(editor.NormalEditMode, streams),
+		IOStreams:   streams,
+		Rules:       allRules,
 	}
 	cmd := &cobra.Command{
-		Use:                   "interpreter (-f FILENAME | NAME) (--operation OPERATION) [-n NAMESPACE] [--ARGS VALUE]... ",
+		Use:                   "interpret (-f FILENAME | NAME) (--operation OPERATION) [-n NAMESPACE] [--ARGS VALUE]... ",
 		Short:                 "Check the valid of customizations. Or show the result of the rules running",
 		Long:                  interpretLong,
 		SilenceUsage:          true,
 		DisableFlagsInUseLine: true,
 		Example:               fmt.Sprintf(interpretExample, parentCommand),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := o.Validate(args); err != nil {
-				return err
-			}
-			if err := o.Complete(f, cmd, args); err != nil {
-				return err
-			}
-			if err := o.Run(); err != nil {
-				return err
-			}
-			return nil
+		Run: func(cmd *cobra.Command, args []string) {
+			cmdutil.CheckErr(o.Complete(f, cmd, args))
+			cmdutil.CheckErr(o.Validate())
+			cmdutil.CheckErr(o.Run())
 		},
 		Annotations: map[string]string{
 			util.TagCommandGroup: util.GroupClusterTroubleshootingAndDebugging,
@@ -94,9 +88,12 @@ func NewCmdInterpret(f util.Factory, parentCommand string, streams genericcliopt
 	}
 
 	flags := cmd.Flags()
+	o.EditOptions.RecordFlags.AddFlags(cmd)
+	o.EditOptions.PrintFlags.AddFlags(cmd)
+	cmdutil.AddValidateFlags(cmd)
 	flags.StringVar(&o.Operation, "operation", o.Operation, "The interpret operation to use. One of: ("+strings.Join(o.Rules.Names(), ",")+")")
-	flags.StringVarP(&o.Filename, "filename", "f", o.Filename, "Filename, directory, or URL to files identifying the resource to fetch the customization rules.")
 	flags.BoolVar(&o.Check, "check", o.Check, "Check the given customizations")
+	flags.BoolVar(&o.Edit, "edit", o.Edit, "Edit customizations")
 	flags.StringVar(&o.Desired, "desired", o.Desired, "The type and name of resource on server to use as desiredObj argument in rule script. For example: deployment/foo.")
 	flags.StringVar(&o.DesiredFile, "desired-file", o.DesiredFile, "Filename, directory, or URL to files identifying the resource to use as desiredObj argument in rule script.")
 	flags.StringVar(&o.Observed, "observed", o.Observed, "The type and name of resource on server to use as observedObj argument in rule script. For example: deployment/foo.")
@@ -108,14 +105,21 @@ func NewCmdInterpret(f util.Factory, parentCommand string, streams genericcliopt
 	flags.StringVar(defaultConfigFlags.Context, "karmada-context", *defaultConfigFlags.Context, "The name of the kubeconfig context to use")
 	flags.StringVarP(defaultConfigFlags.Namespace, "namespace", "n", *defaultConfigFlags.Namespace, "If present, the namespace scope for this CLI request")
 
+	cmdutil.AddFilenameOptionFlags(cmd, &o.FilenameOptions, "containing the customizations")
+	_ = flags.MarkHidden("kustomize")
+
 	return cmd
 }
 
 // InterpretOptions contains the input to the interpret command.
 type InterpretOptions struct {
+	resource.FilenameOptions
+	*editor.EditOptions
+
 	Operation string
 	Filename  string
 	Check     bool
+	Edit      bool
 
 	// args
 	Desired        string
@@ -130,49 +134,11 @@ type InterpretOptions struct {
 	ObservedResult      *resource.Result
 	StatusResult        *genericresource.Result
 
-	Rules rules
+	updatedResultGetter func(data []byte) *resource.Result
+
+	Rules Rules
 
 	genericclioptions.IOStreams
-}
-
-// Validate checks that the provided interpret options are specified.
-func (o *InterpretOptions) Validate(args []string) error {
-	// validate customization args and options.
-	// customization can only be specified once by args or filename option.
-	// And contains no slash.
-	customizationCount := len(args)
-	if o.Filename != "" {
-		customizationCount++
-	}
-	switch customizationCount {
-	case 0:
-		return fmt.Errorf("on customization specified by by args or filename option")
-	case 1:
-		if len(args) > 0 && strings.Contains(args[0], "/") {
-			return fmt.Errorf("it's no neeed to specify resource type for customization")
-		}
-	default:
-		return fmt.Errorf("you can only specify one customization by args and filename option")
-	}
-
-	if o.Check {
-		// validate options for check.
-		if o.Operation != "" ||
-			o.Desired != "" || o.DesiredFile != "" ||
-			o.Observed != "" || o.ObservedFile != "" ||
-			len(o.StatusFile) > 0 ||
-			o.DesiredReplica != 0 {
-			return fmt.Errorf("when option check is set, these options are not allowed: " +
-				"operation, desired, desired-file, observed, observed-file, status-file, desired-replica")
-		}
-	} else {
-		// validate options for testing.
-		if o.Operation == "" {
-			return fmt.Errorf("")
-		}
-	}
-
-	return nil
 }
 
 // Complete ensures that options are valid and marshals them if necessary
@@ -182,47 +148,52 @@ func (o *InterpretOptions) Complete(f util.Factory, cmd *cobra.Command, args []s
 		return err
 	}
 
-	getResource := func(typeName string, filenames ...string) *resource.Result {
-		filenameOptions := &resource.FilenameOptions{}
-		for _, filename := range filenames {
-			if filename != "" {
-				filenameOptions.Filenames = append(filenameOptions.Filenames, filename)
-			}
+	if o.Edit {
+		if len(args) > 1 {
+			return fmt.Errorf("you can only edit one customization at once")
 		}
-
-		var nameArgs []string
-		if typeName != "" {
-			nameArgs = []string{typeName}
+		if len(args) == 1 {
+			args[0] = "resourceinterpretercustomizations/" + args[0]
 		}
-
-		r := f.NewBuilder().
-			Unstructured().
-			NamespaceParam(cmdNamespace).
-			DefaultNamespace().
-			FilenameParam(enforceNamespace, filenameOptions).
-			ResourceTypeOrNameArgs(false, nameArgs...).RequireObject(true).
-			Do()
-		return r
+		o.EditOptions.FilenameOptions = o.FilenameOptions
+		return o.EditOptions.Complete(f, args, cmd)
 	}
 
-	var customizationName string
-	if len(args) > 0 {
-		customizationName = customizationResourceType + "/" + args[0]
-	}
-	o.CustomizationResult = getResource(customizationName, o.Filename)
+	o.CustomizationResult = f.NewBuilder().
+		WithScheme(gclient.NewSchema(), gclient.NewSchema().PrioritizedVersionsAllGroups()...).
+		NamespaceParam(cmdNamespace).
+		DefaultNamespace().
+		FilenameParam(enforceNamespace, &o.FilenameOptions).
+		ResourceNames("resourceinterpretercustomizations", args...).
+		RequireObject(true).
+		Do()
 	if err = o.CustomizationResult.Err(); err != nil {
 		return err
 	}
 
 	if o.Desired != "" || o.DesiredFile != "" {
-		o.DesiredResult = getResource(o.Desired, o.DesiredFile)
+		o.DesiredResult = f.NewBuilder().
+			Unstructured().
+			NamespaceParam(cmdNamespace).
+			DefaultNamespace().
+			FilenameParam(enforceNamespace, &resource.FilenameOptions{Filenames: filterOutEmptyString(o.DesiredFile)}).
+			ResourceTypeOrNameArgs(false, filterOutEmptyString(o.Desired)...).
+			RequireObject(true).
+			Do()
 		if err = o.DesiredResult.Err(); err != nil {
 			return err
 		}
 	}
 
 	if o.Observed != "" || o.ObservedFile != "" {
-		o.ObservedResult = getResource(o.Observed, o.ObservedFile)
+		o.ObservedResult = f.NewBuilder().
+			Unstructured().
+			NamespaceParam(cmdNamespace).
+			DefaultNamespace().
+			FilenameParam(enforceNamespace, &resource.FilenameOptions{Filenames: filterOutEmptyString(o.ObservedFile)}).
+			ResourceTypeOrNameArgs(false, filterOutEmptyString(o.Observed)...).
+			RequireObject(true).
+			Do()
 		if err = o.ObservedResult.Err(); err != nil {
 			return err
 		}
@@ -230,145 +201,59 @@ func (o *InterpretOptions) Complete(f util.Factory, cmd *cobra.Command, args []s
 
 	if len(o.StatusFile) > 0 {
 		o.StatusResult = genericresource.NewBuilder().
-			Constructor(func() interface{} { return workv1alpha2.AggregatedStatusItem{} }).
+			Constructor(func() interface{} { return &workv1alpha2.AggregatedStatusItem{} }).
 			Filename(true, o.StatusFile...).
 			Do()
 		if err = o.StatusResult.Err(); err != nil {
 			return err
 		}
 	}
+
+	return nil
+}
+
+// Validate checks the EditOptions to see if there is sufficient information to run the command.
+func (o *InterpretOptions) Validate() error {
+	if o.Edit {
+		return o.EditOptions.Validate()
+	}
 	return nil
 }
 
 // Run describe information of resources
 func (o *InterpretOptions) Run() error {
-	if o.Check {
+	switch {
+	case o.Check:
 		return o.runCheck()
-	}
-	return o.runTest()
-}
-
-func (o *InterpretOptions) runCheck() error {
-	obj, err := o.CustomizationResult.Object()
-	if err != nil {
-		return err
-	}
-
-	customization := &configv1alpha1.ResourceInterpreterCustomization{}
-	err = helper.ConvertToTypedObject(obj, customization)
-	if err != nil {
-		return err
-	}
-
-	kind := customization.Spec.Target.Kind
-	if kind == "" {
-		return fmt.Errorf("target.kind no set")
-	}
-	apiVersion := customization.Spec.Target.APIVersion
-	if apiVersion == "" {
-		return fmt.Errorf("target.apiVersion no set")
-	}
-
-	w := printers.GetNewTabWriter(o.Out)
-	defer w.Flush()
-	fmt.Fprintf(w, "TARGET:%s %s\t\n", apiVersion, kind)
-	fmt.Fprintf(w, "RULERS:\n")
-	for _, r := range o.Rules {
-		fmt.Fprintf(w, "    %s:\t", r.name)
-
-		script := r.scriptGetter(customization)
-		if script == "" {
-			fmt.Fprintln(w, "DISABLED")
-		} else {
-			err = checkScrip(script)
-			if err != nil {
-				fmt.Fprintf(w, "%s: %v\t\n", "ERROR", err)
-			} else {
-				fmt.Fprintln(w, "PASS")
-			}
-		}
-	}
-	return nil
-}
-
-func (o *InterpretOptions) runTest() error {
-	if o.Operation == "" {
-		return fmt.Errorf("operation is not set for testing")
-	}
-
-	c, err := o.getCustomizationObject()
-	if err != nil {
-		return err
-	}
-
-	desired, err := o.getDesiredObject()
-	if err != nil {
-		return err
-	}
-
-	observed, err := o.getObservedObject()
-	if err != nil {
-		return err
-	}
-
-	status, err := o.getAggregatedStatusItems()
-	if err != nil {
-		return err
-	}
-
-	args := ruleArgs{
-		Desired:  desired,
-		Observed: observed,
-		Status:   status,
-		Replica:  int64(o.DesiredReplica),
-	}
-
-	var interpreter resourceinterpreter.ResourceInterpreter
-
-	for _, r := range o.Rules {
-		if r.name == o.Operation {
-			script := r.scriptGetter(c)
-			results, err := r.run(interpreter, script, args)
-			printResult(o.Out, o.ErrOut, results, err)
-		}
-	}
-	return fmt.Errorf("operation %s is not supported. Use one of: %s", o.Operation, strings.Join(o.Rules.Names(), ", "))
-}
-
-func printResult(w, errOut io.Writer, results *ruleResults, err error) {
-	if err != nil {
-		fmt.Fprintf(errOut, "ERROR: %v\n", err)
-		return
-	}
-
-	encoder := yaml.NewEncoder(w)
-	for _, result := range *results {
-		fmt.Fprintln(w, "---")
-		fmt.Fprintln(w, "# "+result.name)
-		if err = encoder.Encode(result.value); err != nil {
-			fmt.Fprintf(errOut, "ERROR: %v\n", err)
-		}
+	case o.Edit:
+		return o.runEdit()
+	default:
+		return o.runTest()
 	}
 }
 
-func (o *InterpretOptions) getCustomizationObject() (*configv1alpha1.ResourceInterpreterCustomization, error) {
+func (o *InterpretOptions) getCustomizationObject() ([]*configv1alpha1.ResourceInterpreterCustomization, error) {
 	infos, err := o.CustomizationResult.Infos()
 	if err != nil {
 		return nil, err
 	}
-	switch len(infos) {
-	case 0:
-		return nil, fmt.Errorf("no customization is specified by args or filename option")
-	case 1:
-		c := &configv1alpha1.ResourceInterpreterCustomization{}
-		err = helper.ConvertToTypedObject(infos[0].Object, c)
-		return c, err
-	default:
-		return nil, fmt.Errorf("you can only specify one customization by args and filename option")
+
+	customizations := make([]*configv1alpha1.ResourceInterpreterCustomization, len(infos))
+	for i, info := range infos {
+		c, err := asResourceInterpreterCustomization(info.Object)
+		if err != nil {
+			return nil, err
+		}
+		customizations[i] = c
 	}
+	return customizations, nil
 }
 
 func (o *InterpretOptions) getDesiredObject() (*unstructured.Unstructured, error) {
+	if o.DesiredResult == nil {
+		return nil, nil
+	}
+
 	var obj *unstructured.Unstructured
 	err := o.DesiredResult.Visit(func(info *resource.Info, err error) error {
 		if err != nil {
@@ -384,6 +269,10 @@ func (o *InterpretOptions) getDesiredObject() (*unstructured.Unstructured, error
 }
 
 func (o *InterpretOptions) getObservedObject() (*unstructured.Unstructured, error) {
+	if o.ObservedResult == nil {
+		return nil, nil
+	}
+
 	var obj *unstructured.Unstructured
 	err := o.ObservedResult.Visit(func(info *resource.Info, err error) error {
 		if err != nil {
@@ -399,13 +288,17 @@ func (o *InterpretOptions) getObservedObject() (*unstructured.Unstructured, erro
 }
 
 func (o *InterpretOptions) getAggregatedStatusItems() ([]workv1alpha2.AggregatedStatusItem, error) {
+	if o.StatusResult == nil {
+		return nil, nil
+	}
+
 	objs, err := o.StatusResult.Objects()
 	if err != nil {
 		return nil, err
 	}
 	items := make([]workv1alpha2.AggregatedStatusItem, len(objs))
 	for i, obj := range objs {
-		items[i] = obj.(workv1alpha2.AggregatedStatusItem)
+		items[i] = *(obj.(*workv1alpha2.AggregatedStatusItem))
 	}
 	return items, nil
 }
@@ -432,10 +325,10 @@ func (r ruleArgs) getObservedObjectOrError() (*unstructured.Unstructured, error)
 }
 
 func (r ruleArgs) getObjectOrError() (*unstructured.Unstructured, error) {
-	if r.Desired == nil || r.Observed == nil {
+	if r.Desired == nil && r.Observed == nil {
 		return nil, fmt.Errorf("desired, desired-file, observed, observed-file options are not set")
 	}
-	if r.Desired != nil || r.Observed != nil {
+	if r.Desired != nil && r.Observed != nil {
 		return nil, fmt.Errorf("you can not specify multiple object by desired, desired-file, observed, observed-file options")
 	}
 	if r.Desired != nil {
@@ -444,198 +337,20 @@ func (r ruleArgs) getObjectOrError() (*unstructured.Unstructured, error) {
 	return r.Observed, nil
 }
 
-type rule struct {
-	name         string
-	scriptGetter func(*configv1alpha1.ResourceInterpreterCustomization) string
-	run          func(interpret resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error)
-}
-
-type rules []rule
-
-func (r rules) Names() []string {
-	names := make([]string, len(r))
-	for i, rr := range r {
-		names[i] = rr.name
+func filterOutEmptyString(ss ...string) []string {
+	ret := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if s != "" {
+			ret = append(ret, s)
+		}
 	}
-	return names
+	return ret
 }
 
-type ruleResult struct {
-	name  string
-	value interface{}
+func asResourceInterpreterCustomization(o runtime.Object) (*configv1alpha1.ResourceInterpreterCustomization, error) {
+	c, ok := o.(*configv1alpha1.ResourceInterpreterCustomization)
+	if !ok {
+		return nil, fmt.Errorf("not a ResourceInterpreterCustomization: %#v", o)
+	}
+	return c, nil
 }
-
-type ruleResults []ruleResult
-
-func newRuleResults() *ruleResults {
-	return &ruleResults{}
-}
-
-func (r *ruleResults) add(name string, value interface{}) *ruleResults {
-	*r = append(*r, ruleResult{name: name, value: value})
-	return r
-}
-
-var defaultRules rules = []rule{
-	{
-		name: interpretOperationRetention,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.Retention != nil {
-				return c.Spec.Customizations.Retention.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			desired, err := args.getDesiredObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			observed, err := args.getObservedObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			retained, err := interpreter.Retain(desired, observed)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("retained", retained), nil
-		},
-	},
-	{
-		name: interpretOperationReplicaResource,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.ReplicaResource != nil {
-				return c.Spec.Customizations.ReplicaResource.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			replica, requires, err := interpreter.GetReplicas(obj)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("replica", replica).add("requires", requires), nil
-		},
-	},
-	{
-		name: interpretOperationReplicaRevision,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.ReplicaRevision != nil {
-				return c.Spec.Customizations.ReplicaRevision.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			revised, err := interpreter.ReviseReplica(obj, args.Replica)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("revised", revised), nil
-		},
-	},
-	{
-		name: interpretOperationStatusReflection,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.StatusReflection != nil {
-				return c.Spec.Customizations.StatusReflection.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			status, err := interpreter.ReflectStatus(obj)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("status", status), nil
-		},
-	},
-	{
-		name: interpretOperationStatusAggregation,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.StatusAggregation != nil {
-				return c.Spec.Customizations.StatusAggregation.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			aggregateStatus, err := interpreter.AggregateStatus(obj, args.Status)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("aggregateStatus", aggregateStatus), nil
-		},
-	},
-	{
-		name: interpretOperationHealthInterpretation,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.HealthInterpretation != nil {
-				return c.Spec.Customizations.HealthInterpretation.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			healthy, err := interpreter.InterpretHealth(obj)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("healthy", healthy), nil
-		},
-	},
-	{
-		name: interpretOperationDependencyInterpretation,
-		scriptGetter: func(c *configv1alpha1.ResourceInterpreterCustomization) string {
-			if c.Spec.Customizations.DependencyInterpretation != nil {
-				return c.Spec.Customizations.DependencyInterpretation.LuaScript
-			}
-			return ""
-		},
-		run: func(interpreter resourceinterpreter.ResourceInterpreter, script string, args ruleArgs) (*ruleResults, error) {
-			obj, err := args.getObjectOrError()
-			if err != nil {
-				return nil, err
-			}
-			dependencies, err := interpreter.GetDependencies(obj)
-			if err != nil {
-				return nil, err
-			}
-			return newRuleResults().add("dependencies", dependencies), nil
-		},
-	},
-}
-
-func checkScrip(script string) error {
-	// TODO: check script with lua VM.
-	return nil
-}
-
-const (
-	interpretOperationRetention                = "retention"
-	interpretOperationReplicaResource          = "replicaResource"
-	interpretOperationReplicaRevision          = "replicaRevision"
-	interpretOperationStatusReflection         = "statusReflection"
-	interpretOperationStatusAggregation        = "statusAggregation"
-	interpretOperationHealthInterpretation     = "healthInterpretation"
-	interpretOperationDependencyInterpretation = "dependencyInterpretation"
-
-	customizationResourceType = "resourceinterpretercustomizations"
-)
