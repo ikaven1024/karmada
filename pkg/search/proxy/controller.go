@@ -14,7 +14,6 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/scheme"
 	listcorev1 "k8s.io/client-go/listers/core/v1"
@@ -69,8 +68,8 @@ func NewController(option NewControllerOption) (*Controller, error) {
 	secretLister := option.KubeFactory.Core().V1().Secrets().Lister()
 	clusterLister := option.KarmadaFactory.Cluster().V1alpha1().Clusters().Lister()
 
-	clientFactory := dynamicClientForClusterFunc(clusterLister, secretLister)
-	multiClusterStore := store.NewMultiClusterCache(clientFactory, option.RestMapper)
+	configGetter := clusterConfigGetter(clusterLister, secretLister)
+	multiClusterStore := store.NewMultiClusterCache(configGetter, option.RestMapper)
 
 	allPlugins, err := newPlugins(option, multiClusterStore)
 	if err != nil {
@@ -269,8 +268,7 @@ func (ctl *Controller) Connect(ctx context.Context, proxyPath string, responder 
 	}), nil
 }
 
-func dynamicClientForClusterFunc(clusterLister clusterlisters.ClusterLister,
-	secretLister listcorev1.SecretLister) func(string) (dynamic.Interface, error) {
+func clusterConfigGetter(clusterLister clusterlisters.ClusterLister, secretLister listcorev1.SecretLister) func(string) (*restclient.Config, error) {
 	clusterGetter := func(cluster string) (*clusterv1alpha1.Cluster, error) {
 		return clusterLister.Get(cluster)
 	}
@@ -278,11 +276,7 @@ func dynamicClientForClusterFunc(clusterLister clusterlisters.ClusterLister,
 		return secretLister.Secrets(namespace).Get(name)
 	}
 
-	return func(clusterName string) (dynamic.Interface, error) {
-		clusterConfig, err := util.BuildClusterConfig(clusterName, clusterGetter, secretGetter)
-		if err != nil {
-			return nil, err
-		}
-		return dynamic.NewForConfig(clusterConfig)
+	return func(clusterName string) (*restclient.Config, error) {
+		return util.BuildClusterConfig(clusterName, clusterGetter, secretGetter)
 	}
 }

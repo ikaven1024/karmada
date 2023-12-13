@@ -8,36 +8,36 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
-	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 // store implements storage.Interface, Providing Get/Watch/List resources from member clusters.
 type store struct {
 	versioner storage.Versioner
 	prefix    string
-	// newClientFunc returns a resource client for member cluster apiserver
-	newClientFunc func() (dynamic.NamespaceableResourceInterface, error)
 
-	gvr     schema.GroupVersionResource
+	configGetter func() (*rest.Config, error)
+
+	isUnstructured bool
+	gvk            schema.GroupVersionKind
+	gvr            schema.GroupVersionResource
+
+	// codecs is used to create a new REST client
+	codecs serializer.CodecFactory
+
+	// paramCodec is used by list and watch
+	paramCodec runtime.ParameterCodec
+
 	multiNS *MultiNamespace
 }
 
 var _ storage.Interface = &store{}
-
-func newStore(gvr schema.GroupVersionResource, multiNS *MultiNamespace, newClientFunc func() (dynamic.NamespaceableResourceInterface, error), versioner storage.Versioner, prefix string) *store {
-	return &store{
-		newClientFunc: newClientFunc,
-		versioner:     versioner,
-		prefix:        prefix,
-		gvr:           gvr,
-		multiNS:       multiNS,
-	}
-}
 
 // Versioner implements storage.Interface.
 func (s *store) Versioner() storage.Versioner {
@@ -60,18 +60,21 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ob
 		return apierrors.NewNotFound(s.gvr.GroupResource(), name)
 	}
 
-	client, err := s.client(namespace)
+	client, err := s.client()
 	if err != nil {
 		return err
 	}
 
-	obj, err := client.Get(ctx, name, convertToMetaV1GetOptions(opts))
+	options := convertToMetaV1GetOptions(opts)
+	req := client.Get().Resource(s.gvr.Resource).Name(name).VersionedParams(&options, s.paramCodec)
+	if namespace != "" {
+		req = req.Namespace(namespace)
+	}
+
+	err = req.Do(ctx).Into(objPtr)
 	if err != nil {
 		return err
 	}
-
-	unstructuredObj := objPtr.(*unstructured.Unstructured)
-	obj.DeepCopyInto(unstructuredObj)
 	return nil
 }
 
@@ -91,13 +94,18 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		return nil
 	}
 
-	client, err := s.client(reqNS)
+	client, err := s.client()
 	if err != nil {
 		return err
 	}
 
 	options := convertToMetaV1ListOptions(opts)
-	objects, err := client.List(ctx, options)
+	req := client.Get().Resource(s.gvr.Resource).VersionedParams(&options, s.paramCodec)
+	if reqNS != "" {
+		req = req.Namespace(reqNS)
+	}
+
+	err = req.Do(ctx).Into(listObj)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -106,17 +114,22 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 	}
 
 	if objFilter != nil {
-		filteredItems := make([]unstructured.Unstructured, 0, len(objects.Items))
-		for _, obj := range objects.Items {
-			obj := obj
-			if objFilter(&obj) {
+		filteredItems := make([]runtime.Object, 0, meta.LenList(listObj))
+		err = meta.EachListItem(listObj, func(obj runtime.Object) error {
+			if objFilter(obj) {
 				filteredItems = append(filteredItems, obj)
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		objects.Items = filteredItems
-	}
 
-	objects.DeepCopyInto(listObj.(*unstructured.UnstructuredList))
+		err = meta.SetList(listObj, filteredItems)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -136,13 +149,22 @@ func (s *store) Watch(ctx context.Context, key string, opts storage.ListOptions)
 		return watch.NewEmptyWatch(), nil
 	}
 
-	client, err := s.client(reqNS)
+	client, err := s.client()
 	if err != nil {
 		return nil, err
 	}
 
 	options := convertToMetaV1ListOptions(opts)
-	watcher, err := client.Watch(ctx, options)
+	options.Watch = true
+	req := client.Get().Resource(s.gvr.Resource).VersionedParams(&options, s.paramCodec)
+	if reqNS != "" {
+		req = req.Namespace(reqNS)
+	}
+
+	watcher, err := req.Watch(ctx)
+	if apierrors.IsNotFound(err) {
+		return watch.NewFake(), nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -175,16 +197,18 @@ func (s *store) Count(string) (int64, error) {
 	return 0, fmt.Errorf("count is not supported in proxy store")
 }
 
-func (s *store) client(namespace string) (dynamic.ResourceInterface, error) {
-	client, err := s.newClientFunc()
+func (s *store) client() (rest.Interface, error) {
+	config, err := s.configGetter()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(namespace) > 0 {
-		return client.Namespace(namespace), nil
+	httpClient, err := rest.HTTPClientFor(config)
+	if err != nil {
+		return nil, err
 	}
-	return client, nil
+
+	return apiutil.RESTClientForGVK(s.gvk, s.isUnstructured, config, s.codecs, httpClient)
 }
 
 func (s *store) splitKey(key string) (string, string) {
