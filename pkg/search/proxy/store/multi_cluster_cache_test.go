@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -37,8 +37,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/client-go/dynamic"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 	kubetesting "k8s.io/client-go/testing"
@@ -420,15 +421,8 @@ func TestMultiClusterCache_Get(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err = wait.PollUntilContextCancel(tt.args.ctx, 100*time.Millisecond, true,
-				func(_ context.Context) (bool, error) {
-					if checkErr := cache.ReadinessCheck(); checkErr == nil {
-						return true, nil
-					}
-					return false, nil
-				})
-			assert.NoError(t, err, "Deadline exceeded while waiting for storage readiness")
-
+			// When cache is not ready, get requests will fall back to backend storage. So there is no need to wait for ReadinessCheck
+			// see: https://github.com/karmada-io/karmada/blob/dbcdd36f7cd1fe64d059b2bd9c5c804dbef3abf8/vendor/k8s.io/apiserver/pkg/storage/cacher/delegator.go#L153
 			obj, err := cache.Get(tt.args.ctx, tt.args.gvr, tt.args.name, tt.args.options)
 			if !tt.want.errAssert(err) {
 				t.Errorf("Unexpected error: %v", err)
@@ -944,6 +938,16 @@ func TestMultiClusterCache_Watch(t *testing.T) {
 		newUnstructuredObject(podGVK, "pod22", withDefaultNamespace(), withResourceVersion("2002")),
 	)
 
+	var cluster1Watcher, cluster2Watcher *watch.RaceFreeFakeWatcher
+	cluster1Client.PrependWatchReactor("pods", func(action kubetesting.Action) (handled bool, ret watch.Interface, err error) {
+		cluster1Watcher = watch.NewRaceFreeFake()
+		return true, cluster1Watcher, nil
+	})
+	cluster2Client.PrependWatchReactor("pods", func(action kubetesting.Action) (handled bool, ret watch.Interface, err error) {
+		cluster2Watcher = watch.NewRaceFreeFake()
+		return true, cluster2Watcher, nil
+	})
+
 	newClientFunc := func(cluster string) (dynamic.Interface, error) {
 		switch cluster {
 		case cluster1.Name:
@@ -970,9 +974,17 @@ func TestMultiClusterCache_Watch(t *testing.T) {
 	// wait cache synced
 	time.Sleep(time.Second)
 
-	// put gets into Cacher.incoming chan
-	_ = cluster1Client.Tracker().Add(newUnstructuredObject(podGVK, "pod13", withDefaultNamespace(), withResourceVersion("1003")))
-	_ = cluster2Client.Tracker().Add(newUnstructuredObject(podGVK, "pod23", withDefaultNamespace(), withResourceVersion("2003")))
+	makeBookmark := func(rv string) *unstructured.Unstructured {
+		o := newUnstructuredObject(podGVK, "", withResourceVersion(rv))
+		require.NoError(t, storage.AnnotateInitialEventsEndBookmark(o))
+		return o
+	}
+	cluster1Watcher.Action(watch.Bookmark, makeBookmark("1002"))
+	cluster2Watcher.Action(watch.Bookmark, makeBookmark("2002"))
+
+	cluster1Watcher.Add(newUnstructuredObject(podGVK, "pod13", withDefaultNamespace(), withResourceVersion("1003")))
+	cluster2Watcher.Add(newUnstructuredObject(podGVK, "pod23", withDefaultNamespace(), withResourceVersion("2003")))
+
 	cluster1Client.versionTracker.Set("1003")
 	cluster2Client.versionTracker.Set("2003")
 
